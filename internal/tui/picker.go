@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -161,7 +162,8 @@ func PickWorkspace(title string, workspaces []model.Workspace, grouped bool) (mo
 	li.Styles.Title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("15"))
 	li.Styles.PaginationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	m := modelPicker{list: li, items: logicalItems}
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Render interactive UI on stderr so shell wrappers can safely capture stdout.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(os.Stderr))
 	res, err := p.Run()
 	if err != nil {
 		return empty, false, err
