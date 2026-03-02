@@ -18,6 +18,23 @@ make install
 ./scripts/install.sh
 ```
 
+## Uninstall
+
+```bash
+make uninstall
+# or
+./scripts/uninstall.sh
+```
+
+`uninstall` removes:
+- installed `wo` binary
+- installed `wo` man page
+- runtime SQLite index/trust state (`wo.db*`)
+
+`uninstall` keeps:
+- workspace `.wo` files
+- config files
+
 Then enable shell integration:
 
 ```bash
