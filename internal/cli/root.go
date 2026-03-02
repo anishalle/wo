@@ -18,12 +18,13 @@ func NewRootCmd(v string) *cobra.Command {
 		version = v
 	}
 	root := &cobra.Command{
-		Use:           "wo",
-		Short:         "Fast workspace manager",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		Args:          cobra.ArbitraryArgs,
-		Version:       version,
+		Use:               "wo",
+		Short:             "Fast workspace manager",
+		SilenceUsage:      true,
+		SilenceErrors:     true,
+		Args:              cobra.ArbitraryArgs,
+		ValidArgsFunction: completeWorkspaceQuery,
+		Version:           version,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if !commandNeedsApp(cmd) {
 				return nil

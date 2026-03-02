@@ -20,7 +20,7 @@ func Script(shell string) (string, error) {
 
 const commonSubcommandGuard = `
     case "$1" in
-      scan|list|doctor|trust|init|completion|man|help|version|__resolve|__shell-apply|__browse|-h|--help|-v|--version)
+      scan|list|doctor|trust|init|completion|man|help|version|__resolve|__shell-apply|__browse|__complete|__completeNoDesc|-h|--help|-v|--version)
         command wo "$@"
         return $?
         ;;
@@ -82,6 +82,10 @@ wo() {
   eval "$(printf '%s' "$json" | command wo __shell-apply --shell zsh)"
   return $?
 }
+
+if (( ${+functions[compdef]} )); then
+  eval "$(command wo completion zsh)"
+fi
 `
 
 const bashScript = `# wo shell integration (bash)
@@ -139,6 +143,10 @@ wo() {
   eval "$(printf '%s' "$json" | command wo __shell-apply --shell bash)"
   return $?
 }
+
+if command -v complete >/dev/null 2>&1; then
+  source <(command wo completion bash)
+fi
 `
 
 const fishScript = `# wo shell integration (fish)
@@ -146,7 +154,7 @@ function wo --description 'workspace manager'
   if test (count $argv) -gt 0
     set first $argv[1]
     switch $first
-      case scan list doctor trust init completion man help version __resolve __shell-apply __browse -h --help -v --version
+      case scan list doctor trust init completion man help version __resolve __shell-apply __browse __complete __completeNoDesc -h --help -v --version
         command wo $argv
         return $status
     end
@@ -200,4 +208,6 @@ function wo --description 'workspace manager'
   eval $script
   return $status
 end
+
+command wo completion fish | source
 `

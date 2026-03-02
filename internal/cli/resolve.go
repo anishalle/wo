@@ -22,7 +22,7 @@ func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePic
 
 	if len(result.Matches) == 0 {
 		if result.Correction != nil {
-			ok, err := promptYesNo(fmt.Sprintf("wo: you typed %s. Did you mean %s? (Y/n) ", query, result.Correction.Workspace.RepoName), true)
+			ok, err := promptYesNo(fmt.Sprintf("wo: you typed %s. Did you mean %s? (y/N) ", query, result.Correction.Workspace.RepoName), false)
 			if err != nil {
 				return out, err
 			}
@@ -34,6 +34,47 @@ func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePic
 				}
 				_ = app.Store.TouchUsage(ctx, selected.ID)
 				out = model.ResolveResponse{Status: model.ResolveOK, Path: selected.Path, HookCommands: hookCmds, ExitCode: model.ExitOK}
+				return out, nil
+			}
+		}
+		if result.Stage == "fuzzy" && len(result.TopSuggestions) > 0 {
+			// Fuzzy matches always require explicit user confirmation.
+			if len(result.TopSuggestions) == 1 {
+				candidate := result.TopSuggestions[0].Workspace
+				ok, err := promptYesNo(fmt.Sprintf("wo: did you mean %s? (y/N) ", candidate.RepoName), false)
+				if err != nil {
+					return out, err
+				}
+				if ok {
+					hookCmds, err := hookSvc.CommandsForWorkspace(ctx, candidate, clean)
+					if err != nil {
+						return out, err
+					}
+					_ = app.Store.TouchUsage(ctx, candidate.ID)
+					out = model.ResolveResponse{Status: model.ResolveOK, Path: candidate.Path, HookCommands: hookCmds, ExitCode: model.ExitOK}
+					return out, nil
+				}
+			} else if isInteractive() {
+				candidates := make([]model.Workspace, 0, len(result.TopSuggestions))
+				for _, m := range result.TopSuggestions {
+					candidates = append(candidates, m.Workspace)
+				}
+				picked, ok, err := pickWorkspaceInteractive(candidates, app.Config.Search.Backend, "Select workspace (fuzzy match)")
+				if err != nil {
+					return out, err
+				}
+				if ok {
+					hookCmds, err := hookSvc.CommandsForWorkspace(ctx, picked, clean)
+					if err != nil {
+						return out, err
+					}
+					_ = app.Store.TouchUsage(ctx, picked.ID)
+					out = model.ResolveResponse{Status: model.ResolveOK, Path: picked.Path, HookCommands: hookCmds, ExitCode: model.ExitOK}
+					return out, nil
+				}
+				out.Status = model.ResolveUserCancel
+				out.Message = "selection cancelled"
+				out.ExitCode = model.ExitCanceled
 				return out, nil
 			}
 		}

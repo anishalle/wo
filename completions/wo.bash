@@ -520,6 +520,7 @@ _wo_trust_allow()
 
     must_have_one_flag=()
     must_have_one_noun=()
+    has_completion_function=1
     noun_aliases=()
 }
 
@@ -540,6 +541,7 @@ _wo_trust_deny()
 
     must_have_one_flag=()
     must_have_one_noun=()
+    has_completion_function=1
     noun_aliases=()
 }
 
@@ -582,6 +584,7 @@ _wo_trust_reset()
 
     must_have_one_flag=()
     must_have_one_noun=()
+    has_completion_function=1
     noun_aliases=()
 }
 
@@ -637,6 +640,7 @@ _wo_root_command()
 
     must_have_one_flag=()
     must_have_one_noun=()
+    has_completion_function=1
     noun_aliases=()
 }
 

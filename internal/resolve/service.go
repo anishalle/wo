@@ -101,9 +101,8 @@ func (s *Service) Resolve(ctx context.Context, query string) (Result, error) {
 	sortMatches(fuzzy)
 	if len(fuzzy) > 0 {
 		out.Stage = "fuzzy"
-		if fuzzy[0].Score >= 0.72 {
-			out.Matches = []Match{fuzzy[0]}
-		}
+		// Never auto-resolve fuzzy matches. Callers must ask the user to confirm.
+		out.Matches = nil
 		out.TopSuggestions = topN(fuzzy, 8)
 		if s.cfg.Correction.Enabled && shouldSuggestCorrection(fuzzy, s.cfg.Correction.MinScore, s.cfg.Correction.MinGap) {
 			first := fuzzy[0]

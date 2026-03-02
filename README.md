@@ -48,11 +48,16 @@ source <(wo init bash)
 wo init fish | source
 ```
 
+After loading shell init, `wo <TAB>` completes workspace names from your index.
+
 ## Basic Usage
 
 ```bash
 # index default roots (~/workspaces if present)
 wo scan --depth 1
+
+#recursively scan for .git/ or .wo files (if your project isn't tracked)
+wo scan --root your/custom/paths/here --depth 2
 
 # jump by repo name
 wo harp

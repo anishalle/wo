@@ -34,7 +34,7 @@ func newPickerDelegate() pickerDelegate {
 	return pickerDelegate{
 		selectedStyle: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
 		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),
-		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8")).MarginTop(1),
+		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("8")),
 		dimStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("8")),
 	}
 }
@@ -47,6 +47,10 @@ func (d pickerDelegate) FullHelp() [][]key.Binding               { return [][]ke
 func (d pickerDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
 	it, ok := listItem.(item)
 	if !ok {
+		return
+	}
+	if it.spacer {
+		_, _ = io.WriteString(w, "")
 		return
 	}
 	if it.header {
@@ -66,6 +70,7 @@ func (d pickerDelegate) Render(w io.Writer, m list.Model, index int, listItem li
 
 type item struct {
 	header bool
+	spacer bool
 	title  string
 	ws     model.Workspace
 }
@@ -95,6 +100,7 @@ type modelPicker struct {
 func (m modelPicker) Init() tea.Cmd { return nil }
 
 func (m modelPicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	moveDir := 0
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, msg.Height-2)
@@ -110,16 +116,67 @@ func (m modelPicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			copyWs := selected.ws
 			m.picked = &copyWs
 			return m, tea.Quit
+		case "j", "down", "ctrl+j", "l", "right", "pgdown", "f", "d", "home", "g", "esc":
+			moveDir = 1
+		case "k", "up", "ctrl+k", "h", "left", "pgup", "b", "u", "end", "G":
+			moveDir = -1
 		}
 	}
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	m.snapToSelectable(moveDir)
 	return m, cmd
 }
 
 func (m modelPicker) View() string {
-	footer := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("j/k move  enter select  / filter  q quit")
+	footer := lipgloss.NewStyle().Foreground(lipgloss.Color("8")).Render("j/k move  enter select  / filter  esc exit/clear filter  q quit")
 	return m.list.View() + "\n" + footer
+}
+
+func (m *modelPicker) snapToSelectable(preferredDir int) {
+	if itemIsSelectable(m.list.SelectedItem()) {
+		return
+	}
+	if preferredDir == 0 {
+		preferredDir = 1
+	}
+	if snapListInDirection(&m.list, preferredDir) {
+		return
+	}
+	_ = snapListInDirection(&m.list, -preferredDir)
+}
+
+func snapListInDirection(li *list.Model, dir int) bool {
+	if li == nil {
+		return false
+	}
+	items := li.VisibleItems()
+	if len(items) == 0 {
+		return false
+	}
+	for i := 0; i < len(items)+2; i++ {
+		if itemIsSelectable(li.SelectedItem()) {
+			return true
+		}
+		before := li.Index()
+		if dir >= 0 {
+			li.CursorDown()
+		} else {
+			li.CursorUp()
+		}
+		if li.Index() == before {
+			break
+		}
+	}
+	return itemIsSelectable(li.SelectedItem())
+}
+
+func itemIsSelectable(it list.Item) bool {
+	typed, ok := it.(item)
+	if !ok {
+		return false
+	}
+	return !typed.header && !typed.spacer
 }
 
 func PickWorkspace(title string, workspaces []model.Workspace, grouped bool) (model.Workspace, bool, error) {
@@ -141,6 +198,11 @@ func PickWorkspace(title string, workspaces []model.Workspace, grouped bool) (mo
 	lastOwner := ""
 	for _, ws := range workspaces {
 		if grouped && ws.Owner != lastOwner {
+			if lastOwner != "" {
+				spacer := item{spacer: true}
+				items = append(items, spacer)
+				logicalItems = append(logicalItems, spacer)
+			}
 			h := item{header: true, title: ws.Owner}
 			items = append(items, h)
 			logicalItems = append(logicalItems, h)
@@ -156,6 +218,17 @@ func PickWorkspace(title string, workspaces []model.Workspace, grouped bool) (mo
 	li.SetShowHelp(false)
 	li.SetShowStatusBar(false)
 	li.SetFilteringEnabled(true)
+	// Match desired UX:
+	// 1) "/" enters filter input mode.
+	// 2) First Esc while filtering applies filter and exits input mode.
+	// 3) Second Esc clears filter back to full list.
+	// Keep Esc from quitting the picker.
+	li.KeyMap.AcceptWhileFiltering.SetKeys("enter", "tab", "shift+tab", "ctrl+k", "up", "ctrl+j", "down", "esc")
+	li.KeyMap.AcceptWhileFiltering.SetHelp("enter/esc", "apply filter")
+	li.KeyMap.CancelWhileFiltering.SetKeys("ctrl+c")
+	li.KeyMap.CancelWhileFiltering.SetHelp("ctrl+c", "cancel")
+	li.KeyMap.Quit.SetKeys("q")
+	li.KeyMap.Quit.SetHelp("q", "quit")
 	if grouped && len(logicalItems) > 1 && logicalItems[0].header {
 		li.Select(1)
 	}

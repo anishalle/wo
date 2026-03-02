@@ -58,9 +58,10 @@ func newTrustDenyCmd() *cobra.Command {
 
 func trustMutateCmd(name string, decision db.TrustDecision) *cobra.Command {
 	return &cobra.Command{
-		Use:   name + " <workspace>",
-		Short: strings.Title(name) + " hooks for a workspace",
-		Args:  cobra.ExactArgs(1),
+		Use:               name + " <workspace>",
+		Short:             strings.Title(name) + " hooks for a workspace",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceToken,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := appFromCmd(cmd)
 			ws, err := resolveWorkspaceToken(cmd.Context(), app, args[0])
@@ -83,9 +84,10 @@ func trustMutateCmd(name string, decision db.TrustDecision) *cobra.Command {
 func newTrustResetCmd() *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   "reset [workspace]",
-		Short: "Reset trust for one workspace or all",
-		Args:  cobra.MaximumNArgs(1),
+		Use:               "reset [workspace]",
+		Short:             "Reset trust for one workspace or all",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeWorkspaceToken,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := appFromCmd(cmd)
 			if all {
