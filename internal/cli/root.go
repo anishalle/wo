@@ -53,8 +53,9 @@ func NewRootCmd(v string) *cobra.Command {
 		RunE: runRoot,
 	}
 
-	root.Flags().Bool("clean", false, "Skip enter hooks")
+	root.Flags().Bool("clean", false, "Skip hooks")
 	root.Flags().Bool("pick", false, "Always open picker")
+	root.Flags().Bool("global", false, "Use profile from global config.wo")
 
 	root.AddCommand(newScanCmd())
 	root.AddCommand(newListCmd())
@@ -107,6 +108,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 	clean, _ := cmd.Flags().GetBool("clean")
 	pick, _ := cmd.Flags().GetBool("pick")
+	forceGlobal, _ := cmd.Flags().GetBool("global")
+	if forceGlobal && len(args) < 2 {
+		return fmt.Errorf("--global requires a profile argument")
+	}
 
 	if err := maybePromptRescan(ctx, app); err != nil {
 		return err
@@ -123,8 +128,11 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), resp.Path)
 		return nil
 	}
-	query := strings.Join(args, " ")
-	resp, err := runResolveFlow(ctx, app, query, clean, pick)
+	workspace, profile, err := parseWorkspaceProfileArgs(args)
+	if err != nil {
+		return err
+	}
+	resp, err := runResolveFlow(ctx, app, workspace, profile, clean, pick, forceGlobal)
 	if err != nil {
 		return err
 	}
@@ -136,6 +144,27 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), resp.Path)
 	return nil
+}
+
+func parseWorkspaceProfileArgs(args []string) (string, string, error) {
+	if len(args) == 0 {
+		return "", "", nil
+	}
+	if len(args) > 2 {
+		return "", "", fmt.Errorf("expected usage: wo [workspace] [profile]")
+	}
+	workspace := strings.TrimSpace(args[0])
+	if workspace == "" {
+		return "", "", fmt.Errorf("workspace argument is required")
+	}
+	if len(args) == 1 {
+		return workspace, "", nil
+	}
+	profile := strings.TrimSpace(args[1])
+	if profile == "" {
+		return "", "", fmt.Errorf("profile argument cannot be empty")
+	}
+	return workspace, profile, nil
 }
 
 func appFromCmd(cmd *cobra.Command) *App {

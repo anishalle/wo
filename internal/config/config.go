@@ -85,6 +85,18 @@ func ConfigPath() (string, error) {
 	return filepath.Join(cfgDir, "wo", "config.toml"), nil
 }
 
+func GlobalHookConfigPath() (string, error) {
+	cfgDir := os.Getenv("XDG_CONFIG_HOME")
+	if cfgDir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		cfgDir = filepath.Join(home, ".config")
+	}
+	return filepath.Join(cfgDir, "wo", "config.wo"), nil
+}
+
 func DataDir() (string, error) {
 	if runtime.GOOS == "linux" {
 		if dataHome := os.Getenv("XDG_DATA_HOME"); dataHome != "" {

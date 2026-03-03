@@ -11,7 +11,7 @@ import (
 	"github.com/anishalle/wo/internal/tui"
 )
 
-func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePick bool) (model.ResolveResponse, error) {
+func runResolveFlow(ctx context.Context, app *App, query, profile string, clean, forcePick, forceGlobal bool) (model.ResolveResponse, error) {
 	var out model.ResolveResponse
 	service := resolve.New(app.Store, app.Config)
 	hookSvc := hooks.New(app.Store, app.Config)
@@ -28,12 +28,12 @@ func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePic
 			}
 			if ok {
 				selected := result.Correction.Workspace
-				hookCmds, err := hookSvc.CommandsForWorkspace(ctx, selected, clean)
+				hookPlan, err := hookSvc.CommandsForWorkspace(ctx, selected, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
 				if err != nil {
 					return out, err
 				}
 				_ = app.Store.TouchUsage(ctx, selected.ID)
-				out = model.ResolveResponse{Status: model.ResolveOK, Path: selected.Path, HookCommands: hookCmds, ExitCode: model.ExitOK}
+				out = model.ResolveResponse{Status: model.ResolveOK, Path: selected.Path, HookCommands: hookPlan.Commands, ReturnToOriginal: hookPlan.ReturnToOriginal, ExitCode: model.ExitOK}
 				return out, nil
 			}
 		}
@@ -46,12 +46,12 @@ func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePic
 					return out, err
 				}
 				if ok {
-					hookCmds, err := hookSvc.CommandsForWorkspace(ctx, candidate, clean)
+					hookPlan, err := hookSvc.CommandsForWorkspace(ctx, candidate, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
 					if err != nil {
 						return out, err
 					}
 					_ = app.Store.TouchUsage(ctx, candidate.ID)
-					out = model.ResolveResponse{Status: model.ResolveOK, Path: candidate.Path, HookCommands: hookCmds, ExitCode: model.ExitOK}
+					out = model.ResolveResponse{Status: model.ResolveOK, Path: candidate.Path, HookCommands: hookPlan.Commands, ReturnToOriginal: hookPlan.ReturnToOriginal, ExitCode: model.ExitOK}
 					return out, nil
 				}
 			} else if isInteractive() {
@@ -64,12 +64,12 @@ func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePic
 					return out, err
 				}
 				if ok {
-					hookCmds, err := hookSvc.CommandsForWorkspace(ctx, picked, clean)
+					hookPlan, err := hookSvc.CommandsForWorkspace(ctx, picked, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
 					if err != nil {
 						return out, err
 					}
 					_ = app.Store.TouchUsage(ctx, picked.ID)
-					out = model.ResolveResponse{Status: model.ResolveOK, Path: picked.Path, HookCommands: hookCmds, ExitCode: model.ExitOK}
+					out = model.ResolveResponse{Status: model.ResolveOK, Path: picked.Path, HookCommands: hookPlan.Commands, ReturnToOriginal: hookPlan.ReturnToOriginal, ExitCode: model.ExitOK}
 					return out, nil
 				}
 				out.Status = model.ResolveUserCancel
@@ -110,15 +110,16 @@ func runResolveFlow(ctx context.Context, app *App, query string, clean, forcePic
 	if err := app.Store.TouchUsage(ctx, selected.ID); err != nil {
 		return out, err
 	}
-	hookCmds, err := hookSvc.CommandsForWorkspace(ctx, selected, clean)
+	hookPlan, err := hookSvc.CommandsForWorkspace(ctx, selected, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
 	if err != nil {
 		return out, err
 	}
 	out = model.ResolveResponse{
-		Status:       model.ResolveOK,
-		Path:         selected.Path,
-		HookCommands: hookCmds,
-		ExitCode:     model.ExitOK,
+		Status:           model.ResolveOK,
+		Path:             selected.Path,
+		HookCommands:     hookPlan.Commands,
+		ReturnToOriginal: hookPlan.ReturnToOriginal,
+		ExitCode:         model.ExitOK,
 	}
 	return out, nil
 }
@@ -149,15 +150,16 @@ func runBrowseFlow(ctx context.Context, app *App, clean bool) (model.ResolveResp
 		return out, err
 	}
 	hookSvc := hooks.New(app.Store, app.Config)
-	hookCmds, err := hookSvc.CommandsForWorkspace(ctx, picked, clean)
+	hookPlan, err := hookSvc.CommandsForWorkspace(ctx, picked, hooks.Request{Clean: clean})
 	if err != nil {
 		return out, err
 	}
 	out = model.ResolveResponse{
-		Status:       model.ResolveOK,
-		Path:         picked.Path,
-		HookCommands: hookCmds,
-		ExitCode:     model.ExitOK,
+		Status:           model.ResolveOK,
+		Path:             picked.Path,
+		HookCommands:     hookPlan.Commands,
+		ReturnToOriginal: hookPlan.ReturnToOriginal,
+		ExitCode:         model.ExitOK,
 	}
 	return out, nil
 }

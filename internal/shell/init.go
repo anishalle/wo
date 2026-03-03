@@ -32,18 +32,23 @@ wo() {
 ` + commonSubcommandGuard + `
   local clean=0
   local pick=0
-  local query_parts=()
+  local force_global=0
+  local positional=()
   local arg
   for arg in "$@"; do
     case "$arg" in
       --clean) clean=1 ;;
       --pick) pick=1 ;;
-      *) query_parts+=("$arg") ;;
+      --global) force_global=1 ;;
+      *) positional+=("$arg") ;;
     esac
   done
 
-  local query="${(j: :)query_parts}"
-  if [[ -z "$query" ]]; then
+  if (( ${#positional[@]} == 0 )); then
+    if [[ $force_global -eq 1 ]]; then
+      command wo "$@"
+      return $?
+    fi
     local json
     local resolve_status
     if [[ $clean -eq 1 ]]; then
@@ -60,21 +65,34 @@ wo() {
     return $?
   fi
 
+  if (( ${#positional[@]} > 2 )); then
+    command wo "$@"
+    return $?
+  fi
+
+  local workspace="${positional[1]}"
+  local profile=""
+  if (( ${#positional[@]} == 2 )); then
+    profile="${positional[2]}"
+  fi
+
   local json
   local resolve_status
-  if [[ $clean -eq 1 && $pick -eq 1 ]]; then
-    json="$(command wo __resolve --query "$query" --clean --pick --json)"
-    resolve_status=$?
-  elif [[ $clean -eq 1 ]]; then
-    json="$(command wo __resolve --query "$query" --clean --json)"
-    resolve_status=$?
-  elif [[ $pick -eq 1 ]]; then
-    json="$(command wo __resolve --query "$query" --pick --json)"
-    resolve_status=$?
-  else
-    json="$(command wo __resolve --query "$query" --json)"
-    resolve_status=$?
+  local resolve_cmd=(command wo __resolve --query "$workspace" --json)
+  if [[ -n "$profile" ]]; then
+    resolve_cmd+=(--profile "$profile")
   fi
+  if [[ $clean -eq 1 ]]; then
+    resolve_cmd+=(--clean)
+  fi
+  if [[ $pick -eq 1 ]]; then
+    resolve_cmd+=(--pick)
+  fi
+  if [[ $force_global -eq 1 ]]; then
+    resolve_cmd+=(--global)
+  fi
+  json="$("${resolve_cmd[@]}")"
+  resolve_status=$?
   if [[ $resolve_status -ne 0 && -z "$json" ]]; then
     return $resolve_status
   fi
@@ -93,18 +111,23 @@ wo() {
 ` + commonSubcommandGuard + `
   local clean=0
   local pick=0
-  local query_parts=()
+  local force_global=0
+  local positional=()
   local arg
   for arg in "$@"; do
     case "$arg" in
       --clean) clean=1 ;;
       --pick) pick=1 ;;
-      *) query_parts+=("$arg") ;;
+      --global) force_global=1 ;;
+      *) positional+=("$arg") ;;
     esac
   done
 
-  local query="${query_parts[*]}"
-  if [[ -z "$query" ]]; then
+  if [[ ${#positional[@]} -eq 0 ]]; then
+    if [[ $force_global -eq 1 ]]; then
+      command wo "$@"
+      return $?
+    fi
     local json
     local resolve_status
     if [[ $clean -eq 1 ]]; then
@@ -121,21 +144,34 @@ wo() {
     return $?
   fi
 
+  if [[ ${#positional[@]} -gt 2 ]]; then
+    command wo "$@"
+    return $?
+  fi
+
+  local workspace="${positional[0]}"
+  local profile=""
+  if [[ ${#positional[@]} -eq 2 ]]; then
+    profile="${positional[1]}"
+  fi
+
   local json
   local resolve_status
-  if [[ $clean -eq 1 && $pick -eq 1 ]]; then
-    json="$(command wo __resolve --query "$query" --clean --pick --json)"
-    resolve_status=$?
-  elif [[ $clean -eq 1 ]]; then
-    json="$(command wo __resolve --query "$query" --clean --json)"
-    resolve_status=$?
-  elif [[ $pick -eq 1 ]]; then
-    json="$(command wo __resolve --query "$query" --pick --json)"
-    resolve_status=$?
-  else
-    json="$(command wo __resolve --query "$query" --json)"
-    resolve_status=$?
+  local resolve_cmd=(command wo __resolve --query "$workspace" --json)
+  if [[ -n "$profile" ]]; then
+    resolve_cmd+=(--profile "$profile")
   fi
+  if [[ $clean -eq 1 ]]; then
+    resolve_cmd+=(--clean)
+  fi
+  if [[ $pick -eq 1 ]]; then
+    resolve_cmd+=(--pick)
+  fi
+  if [[ $force_global -eq 1 ]]; then
+    resolve_cmd+=(--global)
+  fi
+  json="$("${resolve_cmd[@]}")"
+  resolve_status=$?
   if [[ $resolve_status -ne 0 && -z "$json" ]]; then
     return $resolve_status
   fi
@@ -162,20 +198,26 @@ function wo --description 'workspace manager'
 
   set clean 0
   set pick 0
-  set query_parts
+  set force_global 0
+  set positional
   for arg in $argv
     switch $arg
       case --clean
         set clean 1
       case --pick
         set pick 1
+      case --global
+        set force_global 1
       case '*'
-        set query_parts $query_parts "$arg"
+        set positional $positional "$arg"
     end
   end
 
-  set query (string join ' ' $query_parts)
-  if test -z "$query"
+  if test (count $positional) -eq 0
+    if test $force_global -eq 1
+      command wo $argv
+      return $status
+    end
     set browse_cmd "command wo __browse --json"
     if test $clean -eq 1
       set browse_cmd "$browse_cmd --clean"
@@ -190,12 +232,29 @@ function wo --description 'workspace manager'
     return $status
   end
 
-  set cmd "command wo __resolve --query \"$query\" --json"
+  if test (count $positional) -gt 2
+    command wo $argv
+    return $status
+  end
+
+  set workspace $positional[1]
+  set profile ""
+  if test (count $positional) -eq 2
+    set profile $positional[2]
+  end
+
+  set cmd "command wo __resolve --query \"$workspace\" --json"
+  if test -n "$profile"
+    set cmd "$cmd --profile \"$profile\""
+  end
   if test $clean -eq 1
     set cmd "$cmd --clean"
   end
   if test $pick -eq 1
     set cmd "$cmd --pick"
+  end
+  if test $force_global -eq 1
+    set cmd "$cmd --global"
   end
 
   set json (eval $cmd)

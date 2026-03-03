@@ -16,14 +16,21 @@ type Workspace struct {
 }
 
 type WorkspaceFileConfig struct {
-	Name  string      `toml:"name"`
-	Owner string      `toml:"owner"`
-	Enter EnterConfig `toml:"enter"`
+	Name     string                 `toml:"name"`
+	Owner    string                 `toml:"owner"`
+	Enter    EnterConfig            `toml:"enter"`
+	Profiles map[string]HookProfile `toml:"-"`
+	HasEnter bool                   `toml:"-"`
 }
 
 type EnterConfig struct {
 	Commands []string `toml:"commands"`
 	Shell    string   `toml:"shell"`
+}
+
+type HookProfile struct {
+	Commands []string
+	Chdir    bool
 }
 
 type ResolveStatus string
@@ -49,6 +56,7 @@ type ResolveResponse struct {
 	Path              string             `json:"path,omitempty"`
 	Message           string             `json:"message,omitempty"`
 	HookCommands      []string           `json:"hook_commands,omitempty"`
+	ReturnToOriginal  bool               `json:"return_to_original_dir,omitempty"`
 	NeedsConfirmation bool               `json:"needs_confirmation"`
 	Candidates        []ResolveCandidate `json:"candidates,omitempty"`
 	ExitCode          int                `json:"exit_code"`

@@ -15,6 +15,8 @@ import (
 
 func newResolveCmd() *cobra.Command {
 	var query string
+	var profile string
+	var forceGlobal bool
 	var clean bool
 	var pick bool
 	var asJSON bool
@@ -25,12 +27,19 @@ func newResolveCmd() *cobra.Command {
 			if strings.TrimSpace(query) == "" {
 				return fmt.Errorf("--query is required")
 			}
+			query, profile, err := normalizeResolveQueryProfile(query, profile)
+			if err != nil {
+				return err
+			}
+			if forceGlobal && strings.TrimSpace(profile) == "" {
+				return fmt.Errorf("--global requires --profile")
+			}
 			app := appFromCmd(cmd)
 			ctx := cmd.Context()
 			if err := maybePromptRescan(ctx, app); err != nil {
 				return err
 			}
-			resp, err := runResolveFlow(ctx, app, query, clean, pick)
+			resp, err := runResolveFlow(ctx, app, query, profile, clean, pick, forceGlobal)
 			if err != nil {
 				return err
 			}
@@ -55,10 +64,29 @@ func newResolveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&query, "query", "", "workspace query")
-	cmd.Flags().BoolVar(&clean, "clean", false, "Skip enter hooks")
+	cmd.Flags().StringVar(&profile, "profile", "", "hook profile")
+	cmd.Flags().BoolVar(&forceGlobal, "global", false, "use global config.wo profile")
+	cmd.Flags().BoolVar(&clean, "clean", false, "Skip hooks")
 	cmd.Flags().BoolVar(&pick, "pick", false, "Force picker")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 	return cmd
+}
+
+func normalizeResolveQueryProfile(query, profile string) (string, string, error) {
+	query = strings.TrimSpace(query)
+	profile = strings.TrimSpace(profile)
+	if profile != "" {
+		return query, profile, nil
+	}
+	fields := strings.Fields(query)
+	if len(fields) <= 1 {
+		return query, profile, nil
+	}
+	workspace, parsedProfile, err := parseWorkspaceProfileArgs(fields)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid workspace/profile in --query: %w", err)
+	}
+	return workspace, parsedProfile, nil
 }
 
 func newBrowseCmd() *cobra.Command {
@@ -153,6 +181,9 @@ func posixShellScript(resp model.ResolveResponse, shell string) string {
 		emitReturn(resp.ExitCode)
 		return sb.String()
 	}
+	if resp.ReturnToOriginal {
+		sb.WriteString("__wo_prev_dir=$(pwd)\n")
+	}
 	sb.WriteString("cd -- ")
 	sb.WriteString(shellQuote(resp.Path, shell))
 	sb.WriteString(" || return 1\n")
@@ -163,6 +194,9 @@ func posixShellScript(resp model.ResolveResponse, shell string) string {
 		sb.WriteString("if [ $__wo_hook_status -ne 0 ]; then printf '%s\\n' ")
 		sb.WriteString(shellQuote("wo: hook failed: "+cmd, shell))
 		sb.WriteString(" >&2; fi\n")
+	}
+	if resp.ReturnToOriginal {
+		sb.WriteString("cd -- \"$__wo_prev_dir\" || return 1\n")
 	}
 	emitReturn(0)
 	return sb.String()
@@ -184,6 +218,9 @@ func fishShellScript(resp model.ResolveResponse) string {
 		emitReturn(resp.ExitCode)
 		return sb.String()
 	}
+	if resp.ReturnToOriginal {
+		sb.WriteString("set -l __wo_prev_dir (pwd)\n")
+	}
 	sb.WriteString("cd -- ")
 	sb.WriteString(shellQuote(resp.Path, "fish"))
 	sb.WriteString("; or return 1\n")
@@ -196,6 +233,9 @@ func fishShellScript(resp model.ResolveResponse) string {
 		sb.WriteString(shellQuote("wo: hook failed: "+cmd, "fish"))
 		sb.WriteString(" >&2\n")
 		sb.WriteString("end\n")
+	}
+	if resp.ReturnToOriginal {
+		sb.WriteString("cd -- \"$__wo_prev_dir\"; or return 1\n")
 	}
 	emitReturn(0)
 	return sb.String()

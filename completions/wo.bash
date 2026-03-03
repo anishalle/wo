@@ -635,6 +635,8 @@ _wo_root_command()
 
     flags+=("--clean")
     local_nonpersistent_flags+=("--clean")
+    flags+=("--global")
+    local_nonpersistent_flags+=("--global")
     flags+=("--pick")
     local_nonpersistent_flags+=("--pick")
 
