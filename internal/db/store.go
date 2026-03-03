@@ -273,6 +273,39 @@ func (s *Store) TouchUsage(ctx context.Context, workspaceID int64) error {
 	return err
 }
 
+func (s *Store) DeleteWorkspaceByID(ctx context.Context, workspaceID int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM aliases WHERE workspace_id = ?`, workspaceID); err != nil {
+		return false, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM usage WHERE workspace_id = ?`, workspaceID); err != nil {
+		return false, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM trust WHERE workspace_id = ?`, workspaceID); err != nil {
+		return false, err
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM workspaces WHERE id = ?`, workspaceID)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 func (s *Store) UsageMap(ctx context.Context) (map[int64]time.Time, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT workspace_id, last_used FROM usage`)
 	if err != nil {

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/anishalle/wo/internal/hooks"
@@ -28,12 +30,14 @@ func runResolveFlow(ctx context.Context, app *App, query, profile string, clean,
 			}
 			if ok {
 				selected := result.Correction.Workspace
-				hookPlan, err := hookSvc.CommandsForWorkspace(ctx, selected, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
+				resolved, ok, err := finalizeSelectedWorkspace(ctx, app, hookSvc, selected, clean, profile, forceGlobal)
 				if err != nil {
 					return out, err
 				}
-				_ = app.Store.TouchUsage(ctx, selected.ID)
-				out = model.ResolveResponse{Status: model.ResolveOK, Path: selected.Path, HookCommands: hookPlan.Commands, ReturnToOriginal: hookPlan.ReturnToOriginal, ExitCode: model.ExitOK}
+				out = resolved
+				if !ok {
+					return out, nil
+				}
 				return out, nil
 			}
 		}
@@ -46,12 +50,14 @@ func runResolveFlow(ctx context.Context, app *App, query, profile string, clean,
 					return out, err
 				}
 				if ok {
-					hookPlan, err := hookSvc.CommandsForWorkspace(ctx, candidate, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
+					resolved, ok, err := finalizeSelectedWorkspace(ctx, app, hookSvc, candidate, clean, profile, forceGlobal)
 					if err != nil {
 						return out, err
 					}
-					_ = app.Store.TouchUsage(ctx, candidate.ID)
-					out = model.ResolveResponse{Status: model.ResolveOK, Path: candidate.Path, HookCommands: hookPlan.Commands, ReturnToOriginal: hookPlan.ReturnToOriginal, ExitCode: model.ExitOK}
+					out = resolved
+					if !ok {
+						return out, nil
+					}
 					return out, nil
 				}
 			} else if isInteractive() {
@@ -64,12 +70,14 @@ func runResolveFlow(ctx context.Context, app *App, query, profile string, clean,
 					return out, err
 				}
 				if ok {
-					hookPlan, err := hookSvc.CommandsForWorkspace(ctx, picked, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
+					resolved, ok, err := finalizeSelectedWorkspace(ctx, app, hookSvc, picked, clean, profile, forceGlobal)
 					if err != nil {
 						return out, err
 					}
-					_ = app.Store.TouchUsage(ctx, picked.ID)
-					out = model.ResolveResponse{Status: model.ResolveOK, Path: picked.Path, HookCommands: hookPlan.Commands, ReturnToOriginal: hookPlan.ReturnToOriginal, ExitCode: model.ExitOK}
+					out = resolved
+					if !ok {
+						return out, nil
+					}
 					return out, nil
 				}
 				out.Status = model.ResolveUserCancel
@@ -107,19 +115,13 @@ func runResolveFlow(ctx context.Context, app *App, query, profile string, clean,
 		selected = picked
 	}
 
-	if err := app.Store.TouchUsage(ctx, selected.ID); err != nil {
-		return out, err
-	}
-	hookPlan, err := hookSvc.CommandsForWorkspace(ctx, selected, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
+	resolved, ok, err := finalizeSelectedWorkspace(ctx, app, hookSvc, selected, clean, profile, forceGlobal)
 	if err != nil {
 		return out, err
 	}
-	out = model.ResolveResponse{
-		Status:           model.ResolveOK,
-		Path:             selected.Path,
-		HookCommands:     hookPlan.Commands,
-		ReturnToOriginal: hookPlan.ReturnToOriginal,
-		ExitCode:         model.ExitOK,
+	out = resolved
+	if !ok {
+		return out, nil
 	}
 	return out, nil
 }
@@ -146,22 +148,69 @@ func runBrowseFlow(ctx context.Context, app *App, clean bool) (model.ResolveResp
 		out.ExitCode = model.ExitCanceled
 		return out, nil
 	}
-	if err := app.Store.TouchUsage(ctx, picked.ID); err != nil {
-		return out, err
-	}
 	hookSvc := hooks.New(app.Store, app.Config)
-	hookPlan, err := hookSvc.CommandsForWorkspace(ctx, picked, hooks.Request{Clean: clean})
+	resolved, ok, err := finalizeSelectedWorkspace(ctx, app, hookSvc, picked, clean, "", false)
 	if err != nil {
 		return out, err
 	}
+	out = resolved
+	if !ok {
+		return out, nil
+	}
+	return out, nil
+}
+
+func finalizeSelectedWorkspace(ctx context.Context, app *App, hookSvc *hooks.Service, selected model.Workspace, clean bool, profile string, forceGlobal bool) (model.ResolveResponse, bool, error) {
+	var out model.ResolveResponse
+	exists, removed, err := ensureWorkspaceExistsOrPrune(ctx, app, selected)
+	if err != nil {
+		return out, false, err
+	}
+	if !exists {
+		out.Status = model.ResolveNoMatch
+		out.ExitCode = model.ExitNoMatch
+		if removed {
+			out.Message = fmt.Sprintf("removed missing workspace from index: %s", selected.Path)
+		} else {
+			out.Message = fmt.Sprintf("workspace path does not exist: %s", selected.Path)
+		}
+		return out, false, nil
+	}
+	if err := app.Store.TouchUsage(ctx, selected.ID); err != nil {
+		return out, false, err
+	}
+	hookPlan, err := hookSvc.CommandsForWorkspace(ctx, selected, hooks.Request{Clean: clean, Profile: profile, ForceGlobal: forceGlobal})
+	if err != nil {
+		return out, false, err
+	}
 	out = model.ResolveResponse{
 		Status:           model.ResolveOK,
-		Path:             picked.Path,
+		Path:             selected.Path,
 		HookCommands:     hookPlan.Commands,
 		ReturnToOriginal: hookPlan.ReturnToOriginal,
 		ExitCode:         model.ExitOK,
 	}
-	return out, nil
+	return out, true, nil
+}
+
+func ensureWorkspaceExistsOrPrune(ctx context.Context, app *App, ws model.Workspace) (bool, bool, error) {
+	if _, err := os.Stat(ws.Path); err == nil {
+		return true, false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return false, false, err
+	}
+	ok, err := promptYesNo(fmt.Sprintf("wo: workspace path is missing: %s. Remove from index? (y/N) ", ws.Path), false)
+	if err != nil {
+		return false, false, err
+	}
+	if !ok {
+		return false, false, nil
+	}
+	deleted, err := app.Store.DeleteWorkspaceByID(ctx, ws.ID)
+	if err != nil {
+		return false, false, err
+	}
+	return false, deleted, nil
 }
 
 func pickWorkspaceInteractive(candidates []model.Workspace, backend, title string, grouped ...bool) (model.Workspace, bool, error) {

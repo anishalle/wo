@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 
@@ -79,5 +80,49 @@ func TestTrustRoundTrip(t *testing.T) {
 	}
 	if err := store.ResetTrust(ctx, id); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDeleteWorkspaceByID(t *testing.T) {
+	ctx := context.Background()
+	dataDir := filepath.Join(t.TempDir(), "data")
+	store, err := Open(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	id, err := store.UpsertWorkspace(ctx, model.Workspace{
+		Path:     "/tmp/deleted-project",
+		RepoName: "deleted-project",
+		Owner:    "local",
+		Source:   "wo",
+		HasWO:    true,
+	}, []string{"dp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TouchUsage(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetTrust(ctx, id, TrustAllow, "fp-delete"); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := store.DeleteWorkspaceByID(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatalf("expected deleted=true")
+	}
+
+	if _, err := store.WorkspaceByID(ctx, id); err == nil {
+		t.Fatalf("expected workspace to be deleted")
+	}
+	if _, err := store.GetTrust(ctx, id); err == nil {
+		t.Fatalf("expected trust row to be deleted")
+	} else if err != sql.ErrNoRows {
+		t.Fatalf("unexpected trust lookup error: %v", err)
 	}
 }
