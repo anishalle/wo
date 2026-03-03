@@ -4,6 +4,9 @@
 
 It indexes workspaces once, resolves names quickly, and (with shell integration) changes directory and runs trusted hooks.
 
+![til](https://raw.githubusercontent.com/anishalle/wo/refs/heads/master/assets/wo.gif)
+
+
 ## What `wo` Does
 
 - Jump to a workspace by name: `wo harp`
