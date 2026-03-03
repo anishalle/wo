@@ -72,10 +72,10 @@ wo scan --root ~/workspaces --root ~/src --depth 2
 wo harp
 
 # jump and run named profile hook
-wo harp cursor
+wo harp code
 
 # force global profile
-wo harp cursor --global
+wo harp code --global
 
 # skip all hooks for this invocation
 wo harp --clean
@@ -96,16 +96,20 @@ A directory is indexed if it has either:
 Place a `.wo` file at workspace root.
 
 ```toml
-name = "harp"
+name = "harp" # optional name and owner
 owner = "hackutd"
 
-[enter]
+[enter]   # commands that run on enter ( wo harp )
 commands = ["echo startup", "nvim ."]
 shell = "inherit"
 
-[cursor]
-command = "cursor ."
-chdir = true
+[code]
+command = "code ."
+chdir = false
+
+[nvim]
+comand = "nvim ."
+chdir = true   #implicitly true
 
 [test]
 commands = ["go test ./...", "make lint"]
