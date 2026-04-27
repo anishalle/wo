@@ -4,7 +4,7 @@
 
 It indexes workspaces once, resolves names quickly, and (with shell integration) changes directory and runs trusted hooks.
 
-**This video is old, wo scan is now wo scan <directory> <depth>. no flags. can also be configured to auto scan a directory and depth in a config file when running just wo scan.**
+**This video is old, wo scan is now `wo scan [directory] [depth]`. no flags. can also be configured to auto scan a directory and depth in a config file when running just wo scan.**
 
 ![til](https://raw.githubusercontent.com/anishalle/wo/refs/heads/master/assets/wo.gif)
 
