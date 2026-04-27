@@ -8,7 +8,7 @@ It indexes workspaces once, resolves names quickly, and (with shell integration)
 
 ![til](https://raw.githubusercontent.com/anishalle/wo/refs/heads/master/assets/wo.gif)
 
-
+i too, work on 500 projects at the same time, and i hate cding them, and worse, finding out which projects i have on my pc. this is meant to speed up a small aspect of my daily coding life
 ## What `wo` Does
 
 - Jump to a workspace by name: `wo harp`
