@@ -71,7 +71,7 @@ After loading shell integration:
 wo scan --depth 1
 
 # scan custom roots
-wo scan --root ~/workspaces --root ~/src --depth 2
+wo scan  ~/workspaces 2
 
 # jump to workspace
 wo harp
@@ -83,6 +83,7 @@ wo harp code
 wo harp code --global
 
 # skip all hooks for this invocation
+# this is specifically for hooks that invoke on jump, (think direnv)
 wo harp --clean
 
 # always force picker
