@@ -35,6 +35,12 @@ type TrustRecord struct {
 	UpdatedAt   time.Time
 }
 
+type ScanRoot struct {
+	Path      string
+	Depth     int
+	UpdatedAt time.Time
+}
+
 func Open(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
@@ -71,7 +77,8 @@ func (s *Store) migrate(ctx context.Context) error {
 			last_seen TEXT NOT NULL,
 			has_git INTEGER NOT NULL,
 			has_wo INTEGER NOT NULL,
-			remote_url TEXT NOT NULL DEFAULT ''
+			remote_url TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT ''
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_workspaces_repo_name ON workspaces(repo_name);`,
 		`CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner);`,
@@ -106,14 +113,24 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	// Backward-compatible column additions for existing databases. These run on
+	// every Open and may fail with a "duplicate column name" error once the
+	// column exists, which we tolerate.
+	for _, stmt := range []string{
+		`ALTER TABLE workspaces ADD COLUMN description TEXT NOT NULL DEFAULT '';`,
+	} {
+		if _, err := s.db.ExecContext(ctx, stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate: %w", err)
+		}
+	}
 	return nil
 }
 
 func (s *Store) UpsertWorkspace(ctx context.Context, ws model.Workspace, aliases []string) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO workspaces(path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO workspaces(path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url, description)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(path) DO UPDATE SET
 			repo_name=excluded.repo_name,
 			owner=excluded.owner,
@@ -121,8 +138,9 @@ func (s *Store) UpsertWorkspace(ctx context.Context, ws model.Workspace, aliases
 			last_seen=excluded.last_seen,
 			has_git=excluded.has_git,
 			has_wo=excluded.has_wo,
-			remote_url=excluded.remote_url;
-	`, ws.Path, ws.RepoName, ws.Owner, ws.Source, now, boolToInt(ws.HasGit), boolToInt(ws.HasWO), ws.RemoteURL)
+			remote_url=excluded.remote_url,
+			description=excluded.description;
+	`, ws.Path, ws.RepoName, ws.Owner, ws.Source, now, boolToInt(ws.HasGit), boolToInt(ws.HasWO), ws.RemoteURL, ws.Description)
 	if err != nil {
 		return 0, err
 	}
@@ -167,9 +185,34 @@ func (s *Store) SaveScanRoot(ctx context.Context, path string, depth int) error 
 	return err
 }
 
+func (s *Store) ListScanRoots(ctx context.Context) ([]ScanRoot, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT path, depth, updated_at
+		FROM scan_roots
+		ORDER BY updated_at DESC, path ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ScanRoot
+	for rows.Next() {
+		var root ScanRoot
+		var updatedAt string
+		if err := rows.Scan(&root.Path, &root.Depth, &updatedAt); err != nil {
+			return nil, err
+		}
+		if ts, err := time.Parse(time.RFC3339Nano, updatedAt); err == nil {
+			root.UpdatedAt = ts
+		}
+		out = append(out, root)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListWorkspaces(ctx context.Context) ([]model.Workspace, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url
+		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url, description
 		FROM workspaces
 		ORDER BY owner COLLATE NOCASE ASC, repo_name COLLATE NOCASE ASC
 	`)
@@ -182,7 +225,7 @@ func (s *Store) ListWorkspaces(ctx context.Context) ([]model.Workspace, error) {
 
 func (s *Store) ListWorkspacesByOwner(ctx context.Context, owner string) ([]model.Workspace, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url
+		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url, description
 		FROM workspaces
 		WHERE owner = ?
 		ORDER BY repo_name COLLATE NOCASE ASC
@@ -200,7 +243,7 @@ func scanWorkspaces(rows *sql.Rows) ([]model.Workspace, error) {
 		var w model.Workspace
 		var lastSeen string
 		var hasGit, hasWO int
-		if err := rows.Scan(&w.ID, &w.Path, &w.RepoName, &w.Owner, &w.Source, &lastSeen, &hasGit, &hasWO, &w.RemoteURL); err != nil {
+		if err := rows.Scan(&w.ID, &w.Path, &w.RepoName, &w.Owner, &w.Source, &lastSeen, &hasGit, &hasWO, &w.RemoteURL, &w.Description); err != nil {
 			return nil, err
 		}
 		w.HasGit = hasGit == 1
@@ -218,9 +261,9 @@ func (s *Store) WorkspaceByID(ctx context.Context, id int64) (model.Workspace, e
 	var lastSeen string
 	var hasGit, hasWO int
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url
+		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url, description
 		FROM workspaces WHERE id = ?
-	`, id).Scan(&w.ID, &w.Path, &w.RepoName, &w.Owner, &w.Source, &lastSeen, &hasGit, &hasWO, &w.RemoteURL)
+	`, id).Scan(&w.ID, &w.Path, &w.RepoName, &w.Owner, &w.Source, &lastSeen, &hasGit, &hasWO, &w.RemoteURL, &w.Description)
 	if err != nil {
 		return w, err
 	}
@@ -234,7 +277,7 @@ func (s *Store) WorkspaceByID(ctx context.Context, id int64) (model.Workspace, e
 
 func (s *Store) FindByRepoName(ctx context.Context, repo string) ([]model.Workspace, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url
+		SELECT id, path, repo_name, owner, source, last_seen, has_git, has_wo, remote_url, description
 		FROM workspaces
 		WHERE repo_name = ?
 		ORDER BY repo_name COLLATE NOCASE ASC
@@ -248,7 +291,7 @@ func (s *Store) FindByRepoName(ctx context.Context, repo string) ([]model.Worksp
 
 func (s *Store) FindByAlias(ctx context.Context, alias string) ([]model.Workspace, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id, w.path, w.repo_name, w.owner, w.source, w.last_seen, w.has_git, w.has_wo, w.remote_url
+		SELECT w.id, w.path, w.repo_name, w.owner, w.source, w.last_seen, w.has_git, w.has_wo, w.remote_url, w.description
 		FROM aliases a
 		JOIN workspaces w ON w.id = a.workspace_id
 		WHERE a.alias = ?

@@ -8,6 +8,7 @@ import (
 
 var version = "dev"
 
+
 func main() {
 	os.Exit(cli.Execute(version))
 }

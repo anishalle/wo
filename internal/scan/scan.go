@@ -15,10 +15,17 @@ import (
 )
 
 type Options struct {
-	Roots          []string
-	Depth          int
-	FollowSymlinks bool
-	Prune          bool
+	Targets           []Target
+	Roots             []string
+	Depth             int
+	FollowSymlinks    bool
+	Prune             bool
+	FetchDescriptions bool
+}
+
+type Target struct {
+	Path  string
+	Depth int
 }
 
 type Result struct {
@@ -42,16 +49,17 @@ var ignoreDirNames = map[string]struct{}{
 
 func Run(ctx context.Context, store *db.Store, opts Options) (Result, error) {
 	var out Result
-	if opts.Depth < 1 {
-		opts.Depth = 1
+	targets, err := normalizeTargets(opts)
+	if err != nil {
+		return out, err
 	}
-	if len(opts.Roots) == 0 {
+	if len(targets) == 0 {
 		return out, fmt.Errorf("no roots to scan")
 	}
 	seen := map[string]candidate{}
-	for _, root := range opts.Roots {
-		root = filepath.Clean(root)
-		if err := store.SaveScanRoot(ctx, root, opts.Depth); err != nil {
+	for _, target := range targets {
+		root := target.Path
+		if err := store.SaveScanRoot(ctx, root, target.Depth); err != nil {
 			return out, err
 		}
 		rootInfo, err := os.Stat(root)
@@ -71,7 +79,7 @@ func Run(ctx context.Context, store *db.Store, opts Options) (Result, error) {
 		if rootCand != nil {
 			seen[root] = *rootCand
 		}
-		err = walkRoot(root, opts.Depth, opts.FollowSymlinks, seen)
+		err = walkRoot(root, target.Depth, opts.FollowSymlinks, seen)
 		if err != nil {
 			return out, err
 		}
@@ -82,6 +90,11 @@ func Run(ctx context.Context, store *db.Store, opts Options) (Result, error) {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
+
+	if opts.FetchDescriptions {
+		fetchDescriptions(ctx, seen, paths)
+	}
+
 	for _, path := range paths {
 		cand := seen[path]
 		out.Discovered++
@@ -96,6 +109,45 @@ func Run(ctx context.Context, store *db.Store, opts Options) (Result, error) {
 			return out, err
 		}
 		out.Removed = removed
+	}
+	return out, nil
+}
+
+func normalizeTargets(opts Options) ([]Target, error) {
+	targets := opts.Targets
+	if len(targets) == 0 {
+		depth := opts.Depth
+		if depth < 1 {
+			depth = 1
+		}
+		for _, root := range opts.Roots {
+			targets = append(targets, Target{Path: root, Depth: depth})
+		}
+	}
+	out := make([]Target, 0, len(targets))
+	indexByPath := make(map[string]int, len(targets))
+	for _, target := range targets {
+		path := filepath.Clean(target.Path)
+		if path == "" || path == "." {
+			path = target.Path
+		}
+		if path == "" {
+			continue
+		}
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return nil, err
+		}
+		target.Path = absPath
+		if target.Depth < 1 {
+			target.Depth = 1
+		}
+		if idx, ok := indexByPath[target.Path]; ok {
+			out[idx].Depth = target.Depth
+			continue
+		}
+		indexByPath[target.Path] = len(out)
+		out = append(out, target)
 	}
 	return out, nil
 }

@@ -4,15 +4,16 @@ import "time"
 
 // Workspace is a normalized workspace record used throughout wo.
 type Workspace struct {
-	ID        int64     `json:"id"`
-	Path      string    `json:"path"`
-	RepoName  string    `json:"repo_name"`
-	Owner     string    `json:"owner"`
-	Source    string    `json:"source"`
-	LastSeen  time.Time `json:"last_seen"`
-	HasGit    bool      `json:"has_git"`
-	HasWO     bool      `json:"has_wo"`
-	RemoteURL string    `json:"remote_url"`
+	ID          int64     `json:"id"`
+	Path        string    `json:"path"`
+	RepoName    string    `json:"repo_name"`
+	Owner       string    `json:"owner"`
+	Source      string    `json:"source"`
+	LastSeen    time.Time `json:"last_seen"`
+	HasGit      bool      `json:"has_git"`
+	HasWO       bool      `json:"has_wo"`
+	RemoteURL   string    `json:"remote_url"`
+	Description string    `json:"description"`
 }
 
 type WorkspaceFileConfig struct {

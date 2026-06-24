@@ -19,13 +19,14 @@ func TestOpenAndUpsertWorkspace(t *testing.T) {
 	defer store.Close()
 
 	ws := model.Workspace{
-		Path:      "/tmp/harp",
-		RepoName:  "harp",
-		Owner:     "hackutd",
-		Source:    "git",
-		HasGit:    true,
-		HasWO:     false,
-		RemoteURL: "git@github.com:hackutd/harp.git",
+		Path:        "/tmp/harp",
+		RepoName:    "harp",
+		Owner:       "hackutd",
+		Source:      "git",
+		HasGit:      true,
+		HasWO:       false,
+		RemoteURL:   "git@github.com:hackutd/harp.git",
+		Description: "Hackathon registration platform",
 	}
 	id1, err := store.UpsertWorkspace(ctx, ws, []string{"hp"})
 	if err != nil {
@@ -33,6 +34,13 @@ func TestOpenAndUpsertWorkspace(t *testing.T) {
 	}
 	if id1 == 0 {
 		t.Fatalf("expected non-zero workspace id")
+	}
+	stored, err := store.WorkspaceByID(ctx, id1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Description != ws.Description {
+		t.Fatalf("expected description %q, got %q", ws.Description, stored.Description)
 	}
 	id2, err := store.UpsertWorkspace(ctx, ws, []string{"harp"})
 	if err != nil {

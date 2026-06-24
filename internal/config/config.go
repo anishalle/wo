@@ -21,8 +21,9 @@ type Config struct {
 }
 
 type ScanConfig struct {
-	DepthDefault  int  `toml:"depth_default"`
-	FollowSymlink bool `toml:"follow_symlink"`
+	DepthDefault      int  `toml:"depth_default"`
+	FollowSymlink     bool `toml:"follow_symlink"`
+	FetchDescriptions bool `toml:"fetch_descriptions"`
 }
 
 type SearchConfig struct {
@@ -46,7 +47,8 @@ type CorrectionConfig struct {
 func DefaultConfig() Config {
 	cfg := Config{
 		Scan: ScanConfig{
-			DepthDefault: 1,
+			DepthDefault:      1,
+			FetchDescriptions: true,
 		},
 		Search: SearchConfig{
 			Backend: "auto",
@@ -86,15 +88,19 @@ func ConfigPath() (string, error) {
 }
 
 func GlobalHookConfigPath() (string, error) {
-	cfgDir := os.Getenv("XDG_CONFIG_HOME")
-	if cfgDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		cfgDir = filepath.Join(home, ".config")
+	cfgDir, err := xdgConfigDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Join(cfgDir, "wo", "config.wo"), nil
+}
+
+func ScanPathsFilePath() (string, error) {
+	cfgDir, err := xdgConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cfgDir, "wo", "paths.wo"), nil
 }
 
 func DataDir() (string, error) {
@@ -180,6 +186,26 @@ func EnsureConfigFile(path string, cfg Config) error {
 	return enc.Encode(cfg)
 }
 
+func ResolvePath(path, baseDir string) (string, error) {
+	path, err := expandPath(path)
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path), nil
+	}
+	if baseDir == "" {
+		baseDir, err = os.Getwd()
+		if err != nil {
+			return "", err
+		}
+	}
+	return filepath.Abs(filepath.Join(baseDir, path))
+}
+
 func expandPath(path string) (string, error) {
 	if path == "" {
 		return "", nil
@@ -196,4 +222,15 @@ func expandPath(path string) (string, error) {
 		}
 	}
 	return filepath.Clean(path), nil
+}
+
+func xdgConfigDir() (string, error) {
+	if cfgDir := os.Getenv("XDG_CONFIG_HOME"); cfgDir != "" {
+		return filepath.Clean(cfgDir), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config"), nil
 }

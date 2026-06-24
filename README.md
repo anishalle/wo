@@ -67,11 +67,17 @@ After loading shell integration:
 ## Quick Start
 
 ```bash
-# index default roots (~/workspaces if present)
-wo scan --depth 1
+# index paths from ~/.config/wo/paths.wo
+wo scan
 
-# scan custom roots
-wo scan  ~/workspaces 2
+# scan one root
+wo scan ~/workspaces
+
+# scan one root with explicit depth
+wo scan ~/workspaces 3
+
+# scan targets from a custom file
+wo scan ~/tmp/paths.wo
 
 # jump to workspace
 wo harp
@@ -143,8 +149,6 @@ Location:
 Default values:
 
 ```toml
-roots = ["~/workspaces"]
-
 [scan]
 depth_default = 1
 follow_symlink = false
@@ -190,6 +194,32 @@ Rules:
 - `[enter]` in global `config.wo` is disallowed; `wo` warns and ignores it.
 - Missing requested profile returns an error.
 
+### Scan target file (`paths.wo`)
+
+Location:
+- `~/.config/wo/paths.wo`
+- or `$XDG_CONFIG_HOME/wo/paths.wo` when `XDG_CONFIG_HOME` is set
+
+Format:
+- one scan target per line
+- path first, optional depth second
+- blank lines and `# comments` are ignored
+- `~` is expanded to your home directory
+
+Example:
+
+```text
+~/workspaces 3
+/Volumes/D/path/here 4
+```
+
+Notes:
+- `wo scan` reads this file by default.
+- `wo scan <filename>` reads scan targets from that file.
+- `wo scan <path>` scans a single path using the default depth.
+- `wo scan <path> <depth>` scans a single path using that depth.
+- scanned paths are normalized to absolute paths before they are stored in SQLite.
+
 ## Hook Completion Behavior
 
 For `wo <workspace> <TAB>`:
@@ -210,13 +240,13 @@ wo
 
 Commands:
 - `wo`  
-  Opens interactive browse picker.
+  Opens interactive browse picker. Press `s` to toggle full path display.
 - `wo <workspace>`  
   Resolves workspace, changes directory, runs startup hooks.
 - `wo <workspace> <profile>`  
   Resolves workspace, runs startup + selected profile hooks.
-- `wo scan [--root <path> ...] [--depth <n>] [--follow-symlinks] [--prune]`  
-  Index filesystem roots.
+- `wo scan [path|scan-file] [depth] [--follow-symlinks] [--prune]`  
+  Index filesystem roots from a direct path or a scan target file.
 - `wo list [--owner <owner>] [--json]`  
   List indexed workspaces.
 - `wo doctor`  
