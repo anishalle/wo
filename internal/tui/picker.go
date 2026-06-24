@@ -402,6 +402,12 @@ func PickWorkspace(title string, workspaces []model.Workspace, grouped bool) (mo
 	if len(workspaces) == 0 {
 		return empty, false, nil
 	}
+	// Detect color from stderr — the stream the UI is rendered to (see
+	// tea.WithOutput(os.Stderr) below). Otherwise lipgloss keys its color
+	// profile off os.Stdout, which the shell wrapper captures via $(...), so a
+	// piped stdout would wrongly disable color on the stderr TTY.
+	lipgloss.SetDefaultRenderer(lipgloss.NewRenderer(os.Stderr))
+
 	m := newPickerModel(title, workspaces, grouped)
 	// Render interactive UI on stderr so shell wrappers can safely capture stdout.
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(os.Stderr))
